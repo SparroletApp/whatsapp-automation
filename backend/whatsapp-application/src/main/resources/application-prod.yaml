@@ -45,9 +45,10 @@ jwt:
   secret: "V7qN2xK9mR4tY8pL6sW3cF1hJ5zD9bG7uA2eX6nP4vQ8"
 
 meta:
-  app-id: 2030834637630094
-  app-secret: dbcbcd7752779356974fe25e9fbbfd89
-  graph-version: ${META_GRAPH_VERSION:v26.0}
+  whatsapp:
+    app-id: 2030834637630094
+    app-secret: dbcbcd7752779356974fe25e9fbbfd89
+    graph-version: ${META_GRAPH_VERSION:v26.0}
 
 
 
