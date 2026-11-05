@@ -1,73 +1,51 @@
+
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import whatsappService from "@/app/apiservice/whatsappservice";
+import Swal from "sweetalert2";
+
+
 import "./whatsapp-login.css";
+import whatsappService, { WhatsappConnection } from "../apiservice/whatsappservice";
 
 interface LoggedInUser {
     id: number;
-    name: string;
-    email: string;
-}
-
-interface FacebookLoginResponse {
-    status?: string;
-    authResponse?: {
-        code?: string;
-    };
-}
-
-interface FacebookSDK {
-    init: (config: {
-        appId: string;
-        cookie: boolean;
-        xfbml: boolean;
-        version: string;
-    }) => void;
-
-    login: (
-        callback: (response: FacebookLoginResponse) => void,
-        options: {
-            config_id: string;
-            response_type: "code";
-            override_default_response_type: boolean;
-        }
-    ) => void;
+    name?: string;
+    email?: string;
 }
 
 interface SignupData {
-    wabaId?: string;
-    phoneNumberId?: string;
-}
-
-declare global {
-    interface Window {
-        FB?: FacebookSDK;
-        fbAsyncInit?: () => void;
-    }
+    wabaId: string;
+    phoneNumberId: string;
 }
 
 function WhatsappLogin() {
+
     const [user, setUser] = useState<LoggedInUser | null>(null);
     const [sdkReady, setSdkReady] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [message, setMessage] = useState("");
-    const [sdkError, setSdkError] = useState("");
+    const [account, setAccount] =
+        useState<WhatsappConnection | null>(null);
 
-    const authorizationCodeRef = useRef("");
-    const signupDataRef = useRef<SignupData>({});
+    const [message, setMessage] = useState(
+        "Connect your WhatsApp Business account."
+    );
+
+    const authorizationCodeRef = useRef<string | null>(null);
+    const signupDataRef = useRef<SignupData | null>(null);
     const connectingRef = useRef(false);
 
     const appId = process.env.NEXT_PUBLIC_META_APP_ID;
     const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
-    const graphVersion = process.env.NEXT_PUBLIC_META_GRAPH_VERSION;
+    const graphVersion =
+        process.env.NEXT_PUBLIC_META_GRAPH_VERSION || "vXX.X";
 
-    // Load the logged-in user
     useEffect(() => {
+
         const storedUser = sessionStorage.getItem("user");
 
         if (!storedUser) {
-            setMessage("Please login to your application first.");
+            setMessage("Please log in before connecting WhatsApp.");
             return;
         }
 
@@ -75,24 +53,47 @@ function WhatsappLogin() {
             const parsedUser = JSON.parse(storedUser);
 
             if (!parsedUser.id) {
-                setMessage("Invalid user session. Please login again.");
+                setMessage("Invalid logged-in user.");
                 return;
             }
 
             setUser(parsedUser);
-        } catch (error) {
-            console.error("User session error:", error);
-            setMessage("Unable to read user details. Please login again.");
+        } catch {
+            setMessage("Could not read your login information.");
         }
+
     }, []);
 
-    // Connect WhatsApp account to Spring Boot backend
-    const connectWhatsApp = useCallback(async () => {
-        const code = authorizationCodeRef.current;
-        const wabaId = signupDataRef.current.wabaId;
-        const phoneNumberId = signupDataRef.current.phoneNumberId;
+    const loadAccount = useCallback(async (userId: number) => {
 
-        if (!code || !wabaId || !phoneNumberId || !user) {
+        try {
+            const response =
+                await whatsappService.getWhatsAppAccount(userId);
+
+            setAccount(response);
+            setMessage("Your WhatsApp account is connected.");
+
+        } catch {
+            setAccount(null);
+            setMessage("No WhatsApp account is currently connected.");
+        }
+
+    }, []);
+
+    useEffect(() => {
+
+        if (!user?.id) return;
+
+        loadAccount(user.id);
+
+    }, [user, loadAccount]);
+
+    const connectWhatsApp = useCallback(async () => {
+
+        const code = authorizationCodeRef.current;
+        const signupData = signupDataRef.current;
+
+        if (!code || !signupData || !user?.id) {
             return;
         }
 
@@ -102,106 +103,105 @@ function WhatsappLogin() {
 
         connectingRef.current = true;
         setLoading(true);
-        setMessage("Connecting your WhatsApp Business account...");
+        setMessage("Connecting your WhatsApp account...");
 
         try {
+
             const response = await whatsappService.connectWhatsApp(
                 {
                     authorizationCode: code,
-                    wabaId,
-                    phoneNumberId
+                    wabaId: signupData.wabaId,
+                    phoneNumberId: signupData.phoneNumberId
                 },
                 user.id
             );
 
-            setMessage(
-                response.message ||
-                "WhatsApp account connected successfully."
-            );
+            setAccount(response);
 
-            authorizationCodeRef.current = "";
-            signupDataRef.current = {};
+            authorizationCodeRef.current = null;
+            signupDataRef.current = null;
 
-        } catch (error) {
-            console.error("WhatsApp connection failed:", error);
+            setMessage("WhatsApp connected successfully.");
 
-            setMessage(
-                "Unable to connect your WhatsApp account. Please try again."
-            );
+            await Swal.fire({
+                icon: "success",
+                title: "WhatsApp Connected!",
+                text: "Your WhatsApp Business account is now connected.",
+                confirmButtonColor: "#25D366"
+            });
+
+        } catch (error: any) {
+
+            const errorMessage =
+                error?.response?.data?.detail ||
+                error?.response?.data?.message ||
+                "Unable to connect your WhatsApp account.";
+
+            setMessage(errorMessage);
+
+            await Swal.fire({
+                icon: "error",
+                title: "Connection Failed",
+                text: errorMessage,
+                confirmButtonColor: "#25D366"
+            });
+
         } finally {
+
             connectingRef.current = false;
             setLoading(false);
         }
+
     }, [user]);
 
-    // Initialize Facebook SDK
     useEffect(() => {
-        let cancelled = false;
-        let initialized = false;
 
-        if (!appId || !configId || !graphVersion) {
-            const missing = [
-                !appId && "META_APP_ID",
-                !configId && "META_CONFIG_ID",
-                !graphVersion && "META_GRAPH_VERSION"
-            ].filter(Boolean);
-
-            setSdkError(
-                `Missing Meta environment variables: ${missing.join(", ")}`
-            );
-
-            setSdkReady(false);
+        if (!appId || !configId) {
+            setMessage("Meta App ID or Embedded Signup Config ID is missing.");
             return;
         }
 
-        setSdkError("");
-
         const initializeFacebook = () => {
-            if (cancelled || initialized) return;
 
-            if (!window.FB) {
-                setSdkError("Facebook SDK has not loaded. Please refresh.");
-                return;
-            }
+            if (!window.FB) return;
 
-            try {
-                window.FB.init({
-                    appId,
-                    cookie: true,
-                    xfbml: false,
-                    version: graphVersion
-                });
+            window.FB.init({
+                appId,
+                cookie: true,
+                xfbml: false,
+                version: graphVersion
+            });
 
-                initialized = true;
-                setSdkReady(true);
-                setSdkError("");
-                console.log("Facebook SDK initialized successfully.");
-
-            } catch (error) {
-                console.error("Facebook SDK initialization failed:", error);
-                setSdkError("Unable to initialize Facebook SDK.");
-                setSdkReady(false);
-            }
+            setSdkReady(true);
         };
 
-        const handleScriptError = () => {
-            if (cancelled) return;
+        if (window.FB) {
+            initializeFacebook();
+        } else {
 
-            setSdkReady(false);
-            setSdkError(
-                "Unable to load Facebook SDK. Check your internet connection or Meta SDK settings."
+            window.fbAsyncInit = initializeFacebook;
+
+            const existingScript = document.getElementById(
+                "facebook-jssdk"
             );
-        };
 
-        // Embedded Signup event listener
-        const handleSignupMessage = (event: MessageEvent) => {
-            let hostname: string;
+            if (!existingScript) {
 
-            try {
-                hostname = new URL(event.origin).hostname;
-            } catch {
-                return;
+                const script = document.createElement("script");
+
+                script.id = "facebook-jssdk";
+                script.src = "https://connect.facebook.net/en_US/sdk.js";
+                script.async = true;
+                script.defer = true;
+                script.crossOrigin = "anonymous";
+
+                document.body.appendChild(script);
             }
+        }
+
+        const handleEmbeddedSignup = (event: MessageEvent) => {
+
+            const hostname = new URL(event.origin).hostname;
 
             if (
                 hostname !== "facebook.com" &&
@@ -225,229 +225,260 @@ function WhatsappLogin() {
                 return;
             }
 
-            console.log("WhatsApp Embedded Signup event:", data);
-
             if (data.event === "FINISH") {
+
+                const wabaId = data.data?.waba_id;
+                const phoneNumberId = data.data?.phone_number_id;
+
+                if (!wabaId || !phoneNumberId) {
+                    setLoading(false);
+                    setMessage(
+                        "Meta signup finished, but the WABA or phone number ID was missing."
+                    );
+                    return;
+                }
+
                 signupDataRef.current = {
-                    wabaId: data.data?.waba_id,
-                    phoneNumberId: data.data?.phone_number_id
+                    wabaId: String(wabaId),
+                    phoneNumberId: String(phoneNumberId)
                 };
 
-                setMessage("WhatsApp signup completed. Saving account...");
+                setMessage(
+                    "WhatsApp signup completed. Verifying your account..."
+                );
 
-                connectWhatsApp();
+                void connectWhatsApp();
+            }
 
-            } else if (data.event === "CANCEL") {
-                setLoading(false);
-                setMessage("WhatsApp signup was cancelled.");
+            if (
+                data.event === "CANCEL" ||
+                data.event === "ERROR"
+            ) {
 
-            } else if (data.event === "ERROR") {
+                authorizationCodeRef.current = null;
+                signupDataRef.current = null;
+
+                connectingRef.current = false;
                 setLoading(false);
 
                 setMessage(
-                    data.data?.error_message ||
-                    "An error occurred during WhatsApp signup."
+                    data.event === "CANCEL"
+                        ? "WhatsApp signup was cancelled."
+                        : "An error occurred during WhatsApp signup."
                 );
             }
+
+            // If your configuration supports WhatsApp Business App
+            // coexistence, handle FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING
+            // according to the session data returned by your Meta config.
         };
 
-        window.addEventListener("message", handleSignupMessage);
-
-        // Facebook SDK callback
-        window.fbAsyncInit = initializeFacebook;
-
-        if (window.FB) {
-            initializeFacebook();
-        } else {
-            let script = document.getElementById(
-                "facebook-jssdk"
-            ) as HTMLScriptElement | null;
-
-            // Remove an existing failed script
-            if (script?.dataset.sdkFailed === "true") {
-                script.remove();
-                script = null;
-            }
-
-            if (!script) {
-                script = document.createElement("script");
-
-                script.id = "facebook-jssdk";
-                script.src =
-                    "https://connect.facebook.net/en_US/sdk.js";
-
-                script.async = true;
-                script.defer = true;
-
-                script.addEventListener("load", initializeFacebook);
-                script.addEventListener("error", handleScriptError);
-
-                document.head.appendChild(script);
-
-            } else {
-                script.addEventListener("load", initializeFacebook);
-                script.addEventListener("error", handleScriptError);
-            }
-        }
+        window.addEventListener("message", handleEmbeddedSignup);
 
         return () => {
-            cancelled = true;
-
             window.removeEventListener(
                 "message",
-                handleSignupMessage
+                handleEmbeddedSignup
             );
-
-            const script = document.getElementById(
-                "facebook-jssdk"
-            );
-
-            script?.removeEventListener("load", initializeFacebook);
-            script?.removeEventListener("error", handleScriptError);
-
-            if (window.fbAsyncInit === initializeFacebook) {
-                window.fbAsyncInit = undefined;
-            }
         };
 
     }, [appId, configId, graphVersion, connectWhatsApp]);
 
-    // Facebook Embedded Signup
-    const handleFacebookLogin = () => {
-        if (!user) {
-            setMessage("Please login to your application first.");
+    const startSignup = () => {
+
+        if (!user?.id) {
+            Swal.fire({
+                icon: "warning",
+                title: "Login Required",
+                text: "Please log in before connecting WhatsApp."
+            });
             return;
         }
 
-        if (!appId || !configId) {
-            setMessage("Meta App ID or Configuration ID is missing.");
+        if (!sdkReady || !window.FB) {
+            Swal.fire({
+                icon: "warning",
+                title: "Please Wait",
+                text: "Facebook SDK is still loading."
+            });
             return;
         }
 
-        if (!window.FB || !sdkReady) {
-            setMessage(
-                "Facebook SDK is not ready. Please refresh the page."
-            );
-            return;
-        }
+        if (loading || connectingRef.current) return;
 
-        authorizationCodeRef.current = "";
-        signupDataRef.current = {};
-        connectingRef.current = false;
+        authorizationCodeRef.current = null;
+        signupDataRef.current = null;
 
-        setMessage("");
+        setLoading(true);
+        setMessage("Opening Meta WhatsApp signup...");
+
+        window.FB.login(
+            (response) => {
+
+                const code = response?.authResponse?.code;
+
+                if (!code) {
+
+                    setLoading(false);
+                    setMessage("Facebook authorization was not completed.");
+
+                    return;
+                }
+
+                authorizationCodeRef.current = code;
+
+                setMessage(
+                    "Authorization received. Waiting for WhatsApp account details..."
+                );
+
+                void connectWhatsApp();
+            },
+            {
+                config_id: configId!,
+                response_type: "code",
+                override_default_response_type: true
+            }
+        );
+    };
+
+    const disconnectWhatsApp = async () => {
+
+        if (!user?.id || loading) return;
+
+        const confirmation = await Swal.fire({
+            icon: "warning",
+            title: "Disconnect WhatsApp?",
+            text: "Your WhatsApp account will be disconnected from this platform.",
+            showCancelButton: true,
+            confirmButtonText: "Disconnect",
+            cancelButtonText: "Cancel",
+            confirmButtonColor: "#dc3545"
+        });
+
+        if (!confirmation.isConfirmed) return;
+
         setLoading(true);
 
         try {
-            window.FB.login(
-                (response: FacebookLoginResponse) => {
-                    console.log("Facebook login response:", response);
 
-                    const code = response.authResponse?.code;
+            await whatsappService.disconnectWhatsApp(user.id);
 
-                    if (!code) {
-                        setLoading(false);
+            setAccount(null);
+            setMessage("WhatsApp account disconnected.");
 
-                        setMessage(
-                            "Facebook authorization was cancelled or failed."
-                        );
+            await Swal.fire({
+                icon: "success",
+                title: "Disconnected",
+                text: "Your WhatsApp account has been disconnected."
+            });
 
-                        return;
-                    }
+        } catch (error: any) {
 
-                    authorizationCodeRef.current = code;
+            Swal.fire({
+                icon: "error",
+                title: "Error",
+                text:
+                    error?.response?.data?.detail ||
+                    error?.response?.data?.message ||
+                    "Unable to disconnect WhatsApp."
+            });
 
-                    setMessage(
-                        "Facebook authorization successful. Waiting for WhatsApp signup..."
-                    );
-
-                    // connectWhatsApp will proceed when both
-                    // authorization code and signup IDs are available.
-                    connectWhatsApp();
-                },
-                {
-                    config_id: configId,
-                    response_type: "code",
-                    override_default_response_type: true
-                }
-            );
-
-        } catch (error) {
-            console.error("Facebook login error:", error);
-
+        } finally {
             setLoading(false);
-            setMessage("Unable to open Facebook Login.");
         }
     };
 
     return (
         <section className="whatsapp-login">
 
-            <div className="whatsapp-login-card">
+            <div className="whatsapp-card">
 
-                <div className="whatsapp-login-icon">
+                <div className="whatsapp-icon">
                     <i className="bi bi-whatsapp"></i>
                 </div>
 
-                <span className="whatsapp-login-label">
-                    WHATSAPP BUSINESS INTEGRATION
-                </span>
+                <h2>WhatsApp Business Integration</h2>
 
-                <h1>
-                    Connect Your WhatsApp Business
-                </h1>
-
-                <p className="whatsapp-login-description">
-                    Connect your existing WhatsApp Business account
-                    and manage customer conversations directly
-                    from your application.
+                <p className="whatsapp-description">
+                    Connect your WhatsApp Business account to manage
+                    customer conversations from your platform.
                 </p>
 
-                {user && (
-                    <div className="whatsapp-login-user">
+                {account ? (
 
-                        <div className="whatsapp-user-avatar">
-                            {user.name?.charAt(0).toUpperCase()}
+                    <div className="whatsapp-connected">
+
+                        <div className="connection-status">
+                            <span className="status-dot"></span>
+                            Connected
                         </div>
 
-                        <div>
-                            <strong>{user.name}</strong>
-                            <span>{user.email}</span>
+                        <div className="account-details">
+                            <div>
+                                <span>Business name</span>
+                                <strong>
+                                    {account.verifiedName || "WhatsApp Business"}
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Phone number</span>
+                                <strong>
+                                    {account.displayPhoneNumber || "Not available"}
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>WABA ID</span>
+                                <strong>{account.wabaId}</strong>
+                            </div>
                         </div>
+
+                        <button
+                            type="button"
+                            className="whatsapp-disconnect-btn"
+                            onClick={disconnectWhatsApp}
+                            disabled={loading}
+                        >
+                            {loading ? "Please wait..." : "Disconnect Account"}
+                        </button>
+
+                        <p className="replace-note">
+                            To connect a different number, disconnect this
+                            account and start signup again.
+                        </p>
 
                     </div>
-                )}
 
-                {sdkError && (
-                    <p className="whatsapp-login-message">
-                        {sdkError}
-                    </p>
-                )}
+                ) : (
 
-                <button
-                    type="button"
-                    className="facebook-login-btn"
-                    onClick={handleFacebookLogin}
-                    disabled={!sdkReady || loading || !user}
-                >
-                    <i className="bi bi-facebook"></i>
+                    <button
+                        type="button"
+                        className="whatsapp-connect-btn"
+                        onClick={startSignup}
+                        disabled={!sdkReady || !user || loading}
+                    >
+                        <i className="bi bi-facebook"></i>
 
-                    {loading
-                        ? "Connecting..."
-                        : !sdkReady
-                            ? "Loading Facebook..."
+                        {loading
+                            ? "Connecting..."
                             : "Continue with Facebook"}
-                </button>
+                    </button>
+                )}
 
-                {message && (
-                    <p className="whatsapp-login-message">
-                        {message}
+                <div className="whatsapp-message">
+                    {message}
+                </div>
+
+                {!sdkReady && !account && (
+                    <p className="sdk-loading">
+                        Loading Meta signup...
                     </p>
                 )}
 
-                <div className="whatsapp-login-security">
+                <div className="whatsapp-security">
                     <i className="bi bi-shield-check"></i>
-                    Secure connection powered by Meta
+                    Secure onboarding powered by Meta
                 </div>
 
             </div>

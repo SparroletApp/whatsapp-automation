@@ -1,12 +1,15 @@
+
 package com.example.whatsapp.controller;
 
 import com.example.whatsapp.dto.WhatsappConnectRequestDto;
 import com.example.whatsapp.dto.whatsappdto.WhatsappConnectionDto;
 import com.example.whatsapp.service.WhatsappService;
-
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/whatsapp")
@@ -16,31 +19,41 @@ public class WhatsappController {
     private final WhatsappService whatsappService;
 
     @PostMapping("/connect")
-    public WhatsappConnectionDto connectWhatsApp(
+    public ResponseEntity<WhatsappConnectionDto> connectWhatsApp(
             @RequestParam Long userId,
-            @RequestBody WhatsappConnectRequestDto request
+            @Valid @RequestBody WhatsappConnectRequestDto request
     ) {
-        return whatsappService.connectWhatsApp(
-                userId,
-                request.getAuthorizationCode(),
-                request.getWabaId(),
-                request.getPhoneNumberId()
-        );
+
+        WhatsappConnectionDto response =
+                whatsappService.connectWhatsApp(
+                        userId,
+                        request.getAuthorizationCode(),
+                        request.getWabaId(),
+                        request.getPhoneNumberId()
+                );
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/account/{userId}")
-    public WhatsappConnectionDto getWhatsAppAccount(
+    public ResponseEntity<WhatsappConnectionDto> getWhatsAppAccount(
             @PathVariable Long userId
     ) {
-        return whatsappService.getWhatsAppAccount(userId);
+
+        return ResponseEntity.ok(
+                whatsappService.getWhatsAppAccount(userId)
+        );
     }
 
     @PostMapping("/disconnect/{userId}")
-    public String disconnectWhatsApp(
+    public ResponseEntity<Map<String, String>> disconnectWhatsApp(
             @PathVariable Long userId
     ) {
+
         whatsappService.disconnectWhatsApp(userId);
 
-        return "WhatsApp account disconnected successfully.";
+        return ResponseEntity.ok(
+                Map.of("message", "WhatsApp account disconnected successfully.")
+        );
     }
 }

@@ -1,32 +1,39 @@
 
-import apiService from "./apiservice";
+import axios from "axios";
 
-export interface WhatsAppConnectRequest {
+const API_BASE_URL =
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+
+export interface WhatsappConnectRequest {
     authorizationCode: string;
     wabaId: string;
     phoneNumberId: string;
 }
 
-export interface WhatsAppResponse {
-    message: string;
-    account?: {
-        id: number;
-        wabaId: string;
-        phoneNumberId: string;
-        displayPhoneNumber?: string;
-        verifiedName?: string;
-        connectionStatus: string;
-    };
+export interface WhatsappConnection {
+    id: number;
+    userId: number;
+    wabaId: string;
+    phoneNumberId: string;
+    displayPhoneNumber: string;
+    verifiedName: string;
+    metaBusinessId?: string;
+    metaUserId?: string;
+    connectionStatus: string;
+    isActive: boolean;
+    connectedAt: string;
 }
 
 const whatsappService = {
+
     connectWhatsApp: async (
-        data: WhatsAppConnectRequest,
+        request: WhatsappConnectRequest,
         userId: number
-    ): Promise<WhatsAppResponse> => {
-        const response = await apiService.post(
-            "/api/whatsapp/connect",
-            data,
+    ): Promise<WhatsappConnection> => {
+
+        const response = await axios.post(
+            `${API_BASE_URL}/api/whatsapp/connect`,
+            request,
             {
                 params: { userId }
             }
@@ -37,22 +44,22 @@ const whatsappService = {
 
     getWhatsAppAccount: async (
         userId: number
-    ): Promise<WhatsAppResponse> => {
-        const response = await apiService.get(
-            `/api/whatsapp/account/${userId}`
+    ): Promise<WhatsappConnection> => {
+
+        const response = await axios.get(
+            `${API_BASE_URL}/api/whatsapp/account/${userId}`
         );
 
         return response.data;
     },
 
-    disconnectWhatsApp: async (
-        userId: number
-    ): Promise<WhatsAppResponse> => {
-        const response = await apiService.post(
-            `/api/whatsapp/disconnect/${userId}`
+    disconnectWhatsApp: async (userId: number): Promise<string> => {
+
+        const response = await axios.post(
+            `${API_BASE_URL}/api/whatsapp/disconnect/${userId}`
         );
 
-        return response.data;
+        return response.data.message;
     }
 };
 
