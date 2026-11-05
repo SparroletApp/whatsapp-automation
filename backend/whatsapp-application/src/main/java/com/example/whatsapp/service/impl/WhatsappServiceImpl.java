@@ -1,20 +1,23 @@
-
 package com.example.whatsapp.service.impl;
 
+import com.example.whatsapp.dto.whatsappdto.WhatsappConnectRequestDto;
 import com.example.whatsapp.dto.whatsappdto.WhatsappConnectionDto;
 import com.example.whatsapp.entity.WhatsappEntity;
 import com.example.whatsapp.repository.WhatsappRepository;
 import com.example.whatsapp.service.MetaWhatsappService;
 import com.example.whatsapp.service.WhatsappService;
 import com.fasterxml.jackson.databind.JsonNode;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
-import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -26,11 +29,15 @@ public class WhatsappServiceImpl implements WhatsappService {
     @Override
     @Transactional
     public WhatsappConnectionDto connectWhatsApp(
-            Long userId,
-            String authorizationCode,
-            String wabaId,
-            String phoneNumberId
-    ) {
+            WhatsappConnectRequestDto request) {
+
+        Long userId = request.getUserId();
+
+        String authorizationCode = request.getAuthorizationCode();
+        String wabaId = request.getWabaId();
+        String phoneNumberId = request.getPhoneNumberId();
+
+        // 1. Validate request
 
         if (userId == null || userId <= 0) {
             throw new ResponseStatusException(
@@ -49,11 +56,20 @@ public class WhatsappServiceImpl implements WhatsappService {
             );
         }
 
-        // 1. Exchange the authorization code for the Meta access token.
+        // 2. Exchange authorization code
+
         String accessToken =
                 metaWhatsappService.exchangeCode(authorizationCode);
 
-        // 2. Validate the access token.
+        if (isBlank(accessToken)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Unable to retrieve Meta access token."
+            );
+        }
+
+        // 3. Validate access token
+
         JsonNode debugResponse =
                 metaWhatsappService.debugToken(accessToken);
 
@@ -66,21 +82,30 @@ public class WhatsappServiceImpl implements WhatsappService {
 
             throw new ResponseStatusException(
                     HttpStatus.UNAUTHORIZED,
-                    "The Meta access token is invalid or expired."
+                    "Meta access token is invalid or expired."
             );
         }
 
-        String metaUserId = tokenData.path("user_id").asText(null);
+        String metaUserId =
+                tokenData.path("user_id").asText(null);
 
-        if (!hasPermission(tokenData, "whatsapp_business_management")) {
+        if (!hasPermission(
+                tokenData,
+                "whatsapp_business_management")) {
+
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
                     "WhatsApp Business Management permission was not granted."
             );
         }
 
+        // 4. Verify that the phone number belongs to this WABA
+
         JsonNode phoneResponse =
-                metaWhatsappService.getPhoneNumbers(wabaId, accessToken);
+                metaWhatsappService.getPhoneNumbers(
+                        wabaId,
+                        accessToken
+                );
 
         JsonNode phoneList = phoneResponse == null
                 ? null
@@ -89,23 +114,29 @@ public class WhatsappServiceImpl implements WhatsappService {
         if (phoneList == null || !phoneList.isArray()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_GATEWAY,
-                    "Meta did not return the WABA phone numbers."
+                    "Meta did not return WABA phone numbers."
             );
         }
 
         String displayPhoneNumber = null;
         String verifiedName = null;
+
         boolean phoneFound = false;
 
         for (JsonNode phone : phoneList) {
 
-            if (phoneNumberId.equals(phone.path("id").asText())) {
+            if (phoneNumberId.equals(
+                    phone.path("id").asText())) {
 
                 phoneFound = true;
+
                 displayPhoneNumber =
-                        phone.path("display_phone_number").asText(null);
+                        phone.path("display_phone_number")
+                                .asText(null);
+
                 verifiedName =
-                        phone.path("verified_name").asText(null);
+                        phone.path("verified_name")
+                                .asText(null);
 
                 break;
             }
@@ -114,32 +145,46 @@ public class WhatsappServiceImpl implements WhatsappService {
         if (!phoneFound) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "The selected phone number does not belong to this WABA."
+                    "Phone number does not belong to the selected WABA."
             );
         }
+
+        // 5. Check whether this phone number belongs to another user
 
         WhatsappEntity entity = whatsappRepository
                 .findByPhoneNumberId(phoneNumberId)
                 .orElseGet(WhatsappEntity::new);
 
         if (entity.getId() != null
-                && !entity.getUserId().equals(userId)) {
+                && !Objects.equals(entity.getUserId(), userId)) {
 
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "This WhatsApp phone number is already connected to another user."
+                    "This WhatsApp number is already connected to another user."
             );
         }
 
-        metaWhatsappService.subscribeAppToWaba(wabaId, accessToken);
+        // 6. Subscribe your Meta app to the WABA
 
-        for (WhatsappEntity oldAccount :
-                whatsappRepository.findAllByUserIdAndIsActiveTrue(userId)) {
+        metaWhatsappService.subscribeAppToWaba(
+                wabaId,
+                accessToken
+        );
 
-            if (oldAccount.getId() == null
-                    || !oldAccount.getId().equals(entity.getId())) {
+        // 7. Disconnect previous active accounts.
+        // Keep the old database records.
+
+        List<WhatsappEntity> oldAccounts =
+                whatsappRepository.findAllByUserIdAndIsActiveTrue(userId);
+
+        for (WhatsappEntity oldAccount : oldAccounts) {
+
+            if (!Objects.equals(
+                    oldAccount.getId(),
+                    entity.getId())) {
 
                 oldAccount.setIsActive(false);
+
                 oldAccount.setConnectionStatus(
                         WhatsappEntity.ConnectionStatus.DISCONNECTED
                 );
@@ -148,12 +193,20 @@ public class WhatsappServiceImpl implements WhatsappService {
             }
         }
 
+        // 8. Save the new WhatsApp account
+
         entity.setUserId(userId);
+
         entity.setWabaId(wabaId);
+
         entity.setPhoneNumberId(phoneNumberId);
+
         entity.setDisplayPhoneNumber(displayPhoneNumber);
+
         entity.setVerifiedName(verifiedName);
+
         entity.setAccessToken(accessToken);
+
         entity.setMetaUserId(metaUserId);
 
         entity.setConnectionStatus(
@@ -161,9 +214,13 @@ public class WhatsappServiceImpl implements WhatsappService {
         );
 
         entity.setIsActive(true);
+
         entity.setConnectedAt(LocalDateTime.now());
 
-        WhatsappEntity saved = whatsappRepository.save(entity);
+        WhatsappEntity saved =
+                whatsappRepository.save(entity);
+
+        // 9. Return response including WABA ID
 
         return WhatsappConnectionDto.fromEntity(saved);
     }
@@ -183,6 +240,17 @@ public class WhatsappServiceImpl implements WhatsappService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<WhatsappConnectionDto> getWhatsAppAccounts(Long userId) {
+
+        return whatsappRepository
+                .findAllByUserIdOrderByIdDesc(userId)
+                .stream()
+                .map(WhatsappConnectionDto::fromEntity)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public void disconnectWhatsApp(Long userId) {
 
@@ -194,6 +262,7 @@ public class WhatsappServiceImpl implements WhatsappService {
                 ));
 
         entity.setIsActive(false);
+
         entity.setConnectionStatus(
                 WhatsappEntity.ConnectionStatus.DISCONNECTED
         );
@@ -201,12 +270,16 @@ public class WhatsappServiceImpl implements WhatsappService {
         whatsappRepository.save(entity);
     }
 
-    private boolean hasPermission(JsonNode tokenData, String permission) {
+    private boolean hasPermission(
+            JsonNode tokenData,
+            String permission) {
 
         JsonNode scopes = tokenData.path("scopes");
 
         if (scopes.isArray()) {
+
             for (JsonNode scope : scopes) {
+
                 if (permission.equals(scope.asText())) {
                     return true;
                 }
@@ -217,6 +290,7 @@ public class WhatsappServiceImpl implements WhatsappService {
     }
 
     private boolean isBlank(String value) {
+
         return value == null || value.trim().isEmpty();
     }
 }

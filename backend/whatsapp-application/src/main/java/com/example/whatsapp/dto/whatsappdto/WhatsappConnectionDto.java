@@ -1,45 +1,58 @@
-
 package com.example.whatsapp.dto.whatsappdto;
 
 import com.example.whatsapp.entity.WhatsappEntity;
-import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
 
 import java.time.LocalDateTime;
 
-@Getter
-@Builder
+@Data
 public class WhatsappConnectionDto {
 
     private Long id;
+
     private Long userId;
+
     private String wabaId;
+
     private String phoneNumberId;
+
     private String displayPhoneNumber;
+
     private String verifiedName;
-    private String metaBusinessId;
+
     private String metaUserId;
+
     private String connectionStatus;
+
     private Boolean isActive;
+
     private LocalDateTime connectedAt;
 
-    public static WhatsappConnectionDto fromEntity(WhatsappEntity entity) {
-        return WhatsappConnectionDto.builder()
-                .id(entity.getId())
-                .userId(entity.getUserId())
-                .wabaId(entity.getWabaId())
-                .phoneNumberId(entity.getPhoneNumberId())
-                .displayPhoneNumber(entity.getDisplayPhoneNumber())
-                .verifiedName(entity.getVerifiedName())
-                .metaBusinessId(entity.getMetaBusinessId())
-                .metaUserId(entity.getMetaUserId())
-                .connectionStatus(
-                        entity.getConnectionStatus() == null
-                                ? null
-                                : entity.getConnectionStatus().name()
-                )
-                .isActive(entity.getIsActive())
-                .connectedAt(entity.getConnectedAt())
-                .build();
+    public static WhatsappConnectionDto fromEntity(
+            WhatsappEntity entity) {
+
+        WhatsappConnectionDto dto = new WhatsappConnectionDto();
+
+        dto.setId(entity.getId());
+        dto.setUserId(entity.getUserId());
+
+        dto.setWabaId(entity.getWabaId());
+        dto.setPhoneNumberId(entity.getPhoneNumberId());
+
+        dto.setDisplayPhoneNumber(
+                entity.getDisplayPhoneNumber());
+
+        dto.setVerifiedName(entity.getVerifiedName());
+
+        dto.setMetaUserId(entity.getMetaUserId());
+
+        dto.setConnectionStatus(
+                entity.getConnectionStatus().name());
+
+        dto.setIsActive(entity.getIsActive());
+
+        dto.setConnectedAt(entity.getConnectedAt());
+
+        return dto;
     }
 }

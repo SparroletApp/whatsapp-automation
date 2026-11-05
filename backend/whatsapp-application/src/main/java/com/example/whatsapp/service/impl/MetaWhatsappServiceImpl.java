@@ -1,141 +1,110 @@
-
 package com.example.whatsapp.service.impl;
 
+import com.example.whatsapp.config.MetaConfig;
 import com.example.whatsapp.service.MetaWhatsappService;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
-import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientResponseException;
-import org.springframework.web.server.ResponseStatusException;
+
 import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.util.UriComponentsBuilder;
 
 @Service
 @RequiredArgsConstructor
 public class MetaWhatsappServiceImpl implements MetaWhatsappService {
 
-    private final RestClient.Builder restClientBuilder;
+    private final MetaConfig metaConfig;
 
-    @Value("${meta.whatsapp.app-id}")
-    private String appId;
+    private final RestClient restClient = RestClient.create();
 
-    @Value("${meta.whatsapp.app-secret}")
-    private String appSecret;
-
-    @Value("${meta.whatsapp.graph-version}")
-    private String graphVersion;
-
-    private RestClient client() {
-        return restClientBuilder
-                .baseUrl("https://graph.facebook.com/" + graphVersion)
-                .build();
+    private String graphUrl() {
+        return "https://graph.facebook.com/"
+                + metaConfig.getGraphVersion();
     }
 
     @Override
-    public String exchangeCode(String code) {
+    public String exchangeCode(String authorizationCode) {
 
-        try {
-            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        JsonNode response = restClient.get()
+                .uri(UriComponentsBuilder
+                        .fromUriString(graphUrl() + "/oauth/access_token")
+                        .queryParam("client_id", metaConfig.getAppId())
+                        .queryParam("client_secret", metaConfig.getAppSecret())
+                        .queryParam("code", authorizationCode)
+                        .build()
+                        .encode()
+                        .toUri())
+                .retrieve()
+                .body(JsonNode.class);
 
-            form.add("client_id", appId);
-            form.add("client_secret", appSecret);
-            form.add("code", code);
+        if (response == null ||
+                response.path("access_token").isMissingNode()) {
 
-            JsonNode response = client()
-                    .post()
-                    .uri("/oauth/access_token")
-                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                    .body(form)
-                    .retrieve()
-                    .body(JsonNode.class);
-
-            if (response == null || !response.hasNonNull("access_token")) {
-                throw new ResponseStatusException(
-                        HttpStatus.BAD_GATEWAY,
-                        "Meta did not return an access token."
-                );
-            }
-
-            return response.get("access_token").asText();
-
-        } catch (RestClientResponseException ex) {
-            throw metaError("Authorization code exchange failed", ex);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Meta did not return an access token."
+            );
         }
+
+        return response.path("access_token").asText();
     }
 
     @Override
     public JsonNode debugToken(String accessToken) {
 
-        try {
-            String appAccessToken = appId + "|" + appSecret;
+        String appAccessToken =
+                metaConfig.getAppId()
+                        + "|"
+                        + metaConfig.getAppSecret();
 
-            return client()
-                    .get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/debug_token")
-                            .queryParam("input_token", accessToken)
-                            .queryParam("access_token", appAccessToken)
-                            .build())
-                    .retrieve()
-                    .body(JsonNode.class);
-
-        } catch (RestClientResponseException ex) {
-            throw metaError("Could not validate the Meta access token", ex);
-        }
+        return restClient.get()
+                .uri(UriComponentsBuilder
+                        .fromUriString(graphUrl() + "/debug_token")
+                        .queryParam("input_token", accessToken)
+                        .queryParam("access_token", appAccessToken)
+                        .build()
+                        .encode()
+                        .toUri())
+                .retrieve()
+                .body(JsonNode.class);
     }
 
     @Override
-    public JsonNode getPhoneNumbers(String wabaId, String accessToken) {
-
-        try {
-            return client()
-                    .get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/{wabaId}/phone_numbers")
-                            .queryParam(
-                                    "fields",
-                                    "id,display_phone_number,verified_name"
-                            )
-                            .build(wabaId))
-                    .header("Authorization", "Bearer " + accessToken)
-                    .retrieve()
-                    .body(JsonNode.class);
-
-        } catch (RestClientResponseException ex) {
-            throw metaError("Could not retrieve WABA phone numbers", ex);
-        }
-    }
-
-    @Override
-    public JsonNode subscribeAppToWaba(
+    public JsonNode getPhoneNumbers(
             String wabaId,
-            String accessToken
-    ) {
+            String accessToken) {
 
-        try {
-            return client()
-                    .post()
-                    .uri("/{wabaId}/subscribed_apps", wabaId)
-                    .header("Authorization", "Bearer " + accessToken)
-                    .retrieve()
-                    .body(JsonNode.class);
-
-        } catch (RestClientResponseException ex) {
-            throw metaError("Could not subscribe the app to the WABA", ex);
-        }
+        return restClient.get()
+                .uri(UriComponentsBuilder
+                        .fromUriString(
+                                graphUrl() + "/" + wabaId + "/phone_numbers")
+                        .queryParam(
+                                "fields",
+                                "id,display_phone_number,verified_name")
+                        .queryParam("access_token", accessToken)
+                        .build()
+                        .encode()
+                        .toUri())
+                .retrieve()
+                .body(JsonNode.class);
     }
 
-    private ResponseStatusException metaError(
-            String message,
-            RestClientResponseException ex
-    ) {
-        return new ResponseStatusException(
-                HttpStatus.BAD_GATEWAY,
-                message + ". Meta response: " + ex.getResponseBodyAsString()
-        );
+    @Override
+    public void subscribeAppToWaba(
+            String wabaId,
+            String accessToken) {
+
+        restClient.post()
+                .uri(UriComponentsBuilder
+                        .fromUriString(
+                                graphUrl() + "/" + wabaId + "/subscribed_apps")
+                        .queryParam("access_token", accessToken)
+                        .build()
+                        .encode()
+                        .toUri())
+                .retrieve()
+                .body(JsonNode.class);
     }
 }

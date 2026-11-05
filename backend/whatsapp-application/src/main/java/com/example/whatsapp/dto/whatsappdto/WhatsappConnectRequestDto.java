@@ -1,20 +1,15 @@
+package com.example.whatsapp.dto.whatsappdto;
 
-package com.example.whatsapp.dto;
+import lombok.Data;
 
-import jakarta.validation.constraints.NotBlank;
-import lombok.Getter;
-import lombok.Setter;
-
-@Getter
-@Setter
+@Data
 public class WhatsappConnectRequestDto {
 
-    @NotBlank
+    private Long userId;
+
     private String authorizationCode;
 
-    @NotBlank
     private String wabaId;
 
-    @NotBlank
     private String phoneNumberId;
 }
