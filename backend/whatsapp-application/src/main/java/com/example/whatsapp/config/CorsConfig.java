@@ -1,3 +1,4 @@
+
 package com.example.whatsapp.config;
 
 import org.springframework.context.annotation.Bean;
@@ -16,16 +17,27 @@ public class CorsConfig {
 
         CorsConfiguration configuration = new CorsConfiguration();
 
+        // Allow frontend origin
         configuration.setAllowedOrigins(
-                Arrays.asList("https://whatsapp-backend-h36s.onrender.com/")
+                Arrays.asList(
+                        "https://whatsapp-automation-5vaf.onrender.com"
+                )
         );
 
         configuration.setAllowedMethods(
-                Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+                Arrays.asList(
+                        "GET", "POST", "PUT",
+                        "PATCH", "DELETE", "OPTIONS"
+                )
         );
 
         configuration.setAllowedHeaders(
-                Arrays.asList("Authorization", "Content-Type", "Accept")
+                Arrays.asList(
+                        "Authorization",
+                        "Content-Type",
+                        "Accept",
+                        "Origin"
+                )
         );
 
         configuration.setAllowCredentials(true);
