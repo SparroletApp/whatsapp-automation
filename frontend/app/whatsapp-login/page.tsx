@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -53,6 +52,7 @@ function WhatsappLogin() {
     const [sdkReady, setSdkReady] = useState(false);
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState("");
+    const [sdkError, setSdkError] = useState("");
 
     const authorizationCodeRef = useRef("");
     const signupDataRef = useRef<SignupData>({});
@@ -60,29 +60,39 @@ function WhatsappLogin() {
 
     const appId = process.env.NEXT_PUBLIC_META_APP_ID;
     const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
-    const graphVersion =
-        process.env.NEXT_PUBLIC_META_GRAPH_VERSION;
+    const graphVersion = process.env.NEXT_PUBLIC_META_GRAPH_VERSION;
 
-    // Read logged-in user
+    // Load the logged-in user
     useEffect(() => {
         const storedUser = sessionStorage.getItem("user");
 
-        if (storedUser) {
-            try {
-                setUser(JSON.parse(storedUser));
-            } catch {
-                setMessage("Unable to read user details.");
+        if (!storedUser) {
+            setMessage("Please login to your application first.");
+            return;
+        }
+
+        try {
+            const parsedUser = JSON.parse(storedUser);
+
+            if (!parsedUser.id) {
+                setMessage("Invalid user session. Please login again.");
+                return;
             }
+
+            setUser(parsedUser);
+        } catch (error) {
+            console.error("User session error:", error);
+            setMessage("Unable to read user details. Please login again.");
         }
     }, []);
 
-    // Send authorization details to Java backend
+    // Connect WhatsApp account to Spring Boot backend
     const connectWhatsApp = useCallback(async () => {
         const code = authorizationCodeRef.current;
         const wabaId = signupDataRef.current.wabaId;
         const phoneNumberId = signupDataRef.current.phoneNumberId;
 
-        if (!code || !wabaId || !phoneNumberId) {
+        if (!code || !wabaId || !phoneNumberId || !user) {
             return;
         }
 
@@ -101,7 +111,7 @@ function WhatsappLogin() {
                     wabaId,
                     phoneNumberId
                 },
-                user!.id
+                user.id
             );
 
             setMessage(
@@ -124,15 +134,66 @@ function WhatsappLogin() {
         }
     }, [user]);
 
-    // Load Facebook SDK and listen for signup events
+    // Initialize Facebook SDK
     useEffect(() => {
+        let cancelled = false;
+        let initialized = false;
+
         if (!appId || !configId || !graphVersion) {
-            setMessage(
-                "Meta App ID, Configuration ID or Graph API version is missing."
+            const missing = [
+                !appId && "META_APP_ID",
+                !configId && "META_CONFIG_ID",
+                !graphVersion && "META_GRAPH_VERSION"
+            ].filter(Boolean);
+
+            setSdkError(
+                `Missing Meta environment variables: ${missing.join(", ")}`
             );
+
+            setSdkReady(false);
             return;
         }
 
+        setSdkError("");
+
+        const initializeFacebook = () => {
+            if (cancelled || initialized) return;
+
+            if (!window.FB) {
+                setSdkError("Facebook SDK has not loaded. Please refresh.");
+                return;
+            }
+
+            try {
+                window.FB.init({
+                    appId,
+                    cookie: true,
+                    xfbml: false,
+                    version: graphVersion
+                });
+
+                initialized = true;
+                setSdkReady(true);
+                setSdkError("");
+                console.log("Facebook SDK initialized successfully.");
+
+            } catch (error) {
+                console.error("Facebook SDK initialization failed:", error);
+                setSdkError("Unable to initialize Facebook SDK.");
+                setSdkReady(false);
+            }
+        };
+
+        const handleScriptError = () => {
+            if (cancelled) return;
+
+            setSdkReady(false);
+            setSdkError(
+                "Unable to load Facebook SDK. Check your internet connection or Meta SDK settings."
+            );
+        };
+
+        // Embedded Signup event listener
         const handleSignupMessage = (event: MessageEvent) => {
             let hostname: string;
 
@@ -164,20 +225,21 @@ function WhatsappLogin() {
                 return;
             }
 
+            console.log("WhatsApp Embedded Signup event:", data);
+
             if (data.event === "FINISH") {
                 signupDataRef.current = {
                     wabaId: data.data?.waba_id,
                     phoneNumberId: data.data?.phone_number_id
                 };
 
+                setMessage("WhatsApp signup completed. Saving account...");
+
                 connectWhatsApp();
 
             } else if (data.event === "CANCEL") {
                 setLoading(false);
-
-                setMessage(
-                    "WhatsApp signup was cancelled."
-                );
+                setMessage("WhatsApp signup was cancelled.");
 
             } else if (data.event === "ERROR") {
                 setLoading(false);
@@ -191,26 +253,24 @@ function WhatsappLogin() {
 
         window.addEventListener("message", handleSignupMessage);
 
-        const initializeFacebook = () => {
-            if (!window.FB) return;
-
-            window.FB.init({
-                appId,
-                cookie: true,
-                xfbml: false,
-                version: graphVersion
-            });
-
-            setSdkReady(true);
-        };
+        // Facebook SDK callback
+        window.fbAsyncInit = initializeFacebook;
 
         if (window.FB) {
             initializeFacebook();
         } else {
-            window.fbAsyncInit = initializeFacebook;
+            let script = document.getElementById(
+                "facebook-jssdk"
+            ) as HTMLScriptElement | null;
 
-            if (!document.getElementById("facebook-jssdk")) {
-                const script = document.createElement("script");
+            // Remove an existing failed script
+            if (script?.dataset.sdkFailed === "true") {
+                script.remove();
+                script = null;
+            }
+
+            if (!script) {
+                script = document.createElement("script");
 
                 script.id = "facebook-jssdk";
                 script.src =
@@ -219,27 +279,55 @@ function WhatsappLogin() {
                 script.async = true;
                 script.defer = true;
 
-                document.body.appendChild(script);
+                script.addEventListener("load", initializeFacebook);
+                script.addEventListener("error", handleScriptError);
+
+                document.head.appendChild(script);
+
+            } else {
+                script.addEventListener("load", initializeFacebook);
+                script.addEventListener("error", handleScriptError);
             }
         }
 
         return () => {
+            cancelled = true;
+
             window.removeEventListener(
                 "message",
                 handleSignupMessage
             );
+
+            const script = document.getElementById(
+                "facebook-jssdk"
+            );
+
+            script?.removeEventListener("load", initializeFacebook);
+            script?.removeEventListener("error", handleScriptError);
+
+            if (window.fbAsyncInit === initializeFacebook) {
+                window.fbAsyncInit = undefined;
+            }
         };
+
     }, [appId, configId, graphVersion, connectWhatsApp]);
 
-    // Open Facebook Embedded Signup
+    // Facebook Embedded Signup
     const handleFacebookLogin = () => {
         if (!user) {
-            setMessage("Please login first.");
+            setMessage("Please login to your application first.");
+            return;
+        }
+
+        if (!appId || !configId) {
+            setMessage("Meta App ID or Configuration ID is missing.");
             return;
         }
 
         if (!window.FB || !sdkReady) {
-            setMessage("Facebook SDK is still loading.");
+            setMessage(
+                "Facebook SDK is not ready. Please refresh the page."
+            );
             return;
         }
 
@@ -250,32 +338,46 @@ function WhatsappLogin() {
         setMessage("");
         setLoading(true);
 
-        window.FB.login(
-            (response: FacebookLoginResponse) => {
-                const code = response.authResponse?.code;
+        try {
+            window.FB.login(
+                (response: FacebookLoginResponse) => {
+                    console.log("Facebook login response:", response);
 
-                if (!code) {
-                    setLoading(false);
+                    const code = response.authResponse?.code;
+
+                    if (!code) {
+                        setLoading(false);
+
+                        setMessage(
+                            "Facebook authorization was cancelled or failed."
+                        );
+
+                        return;
+                    }
+
+                    authorizationCodeRef.current = code;
 
                     setMessage(
-                        "Facebook authorization was cancelled or failed."
+                        "Facebook authorization successful. Waiting for WhatsApp signup..."
                     );
 
-                    return;
+                    // connectWhatsApp will proceed when both
+                    // authorization code and signup IDs are available.
+                    connectWhatsApp();
+                },
+                {
+                    config_id: configId,
+                    response_type: "code",
+                    override_default_response_type: true
                 }
+            );
 
-                authorizationCodeRef.current = code;
+        } catch (error) {
+            console.error("Facebook login error:", error);
 
-                // Wait for the Embedded Signup FINISH event
-                // to receive WABA ID and Phone Number ID.
-                connectWhatsApp();
-            },
-            {
-                config_id: configId!,
-                response_type: "code",
-                override_default_response_type: true
-            }
-        );
+            setLoading(false);
+            setMessage("Unable to open Facebook Login.");
+        }
     };
 
     return (
@@ -305,7 +407,7 @@ function WhatsappLogin() {
                     <div className="whatsapp-login-user">
 
                         <div className="whatsapp-user-avatar">
-                            {user.name.charAt(0).toUpperCase()}
+                            {user.name?.charAt(0).toUpperCase()}
                         </div>
 
                         <div>
@@ -314,6 +416,12 @@ function WhatsappLogin() {
                         </div>
 
                     </div>
+                )}
+
+                {sdkError && (
+                    <p className="whatsapp-login-message">
+                        {sdkError}
+                    </p>
                 )}
 
                 <button
@@ -326,7 +434,9 @@ function WhatsappLogin() {
 
                     {loading
                         ? "Connecting..."
-                        : "Continue with Facebook"}
+                        : !sdkReady
+                            ? "Loading Facebook..."
+                            : "Continue with Facebook"}
                 </button>
 
                 {message && (
