@@ -1,12 +1,23 @@
+
 spring:
   application:
     name: fsm
 
+
   datasource:
-    url: ${DB_URL}
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    url: jdbc:postgresql://dpg-dbm4nmo8v5cc73dithgg-a:5432/whatsapp_integration
+    username: root
+    password: v3kvosVB3rqYGlrFslN2lZbT87Dh7iI1
     driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yaml
 
   servlet:
     multipart:
@@ -29,38 +40,18 @@ spring:
           timeout: 5000
           writetimeout: 5000
 
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    show-sql: true
-
-  liquibase:
-    enabled: true
-    change-log: classpath:db/changelog/db.changelog-master.yaml
 
 jwt:
   secret: "V7qN2xK9mR4tY8pL6sW3cF1hJ5zD9bG7uA2eX6nP4vQ8"
 
+meta:
+  app-id: 2030834637630094
+  app-secret: dbcbcd7752779356974fe25e9fbbfd89
+  graph-version: ${META_GRAPH_VERSION:v26.0}
+
+
+
+
 file:
   upload-dir: C:/upload
 
-app:
-  base-url: https://docker-setup-demo.onrender.com
-  contact:
-    notification-email: ${CONTACT_NOTIFICATION_EMAIL:amrutharajan852@gmail.com}
-
-whatsapp:
-  graph-api-url: ${WHATSAPP_GRAPH_API_URL}
-  phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID}
-  access-token: ${WHATSAPP_ACCESS_TOKEN}
-  template-name: ${WHATSAPP_TEMPLATE_NAME}
-  template-language: ${WHATSAPP_TEMPLATE_LANGUAGE}
-  template-yes-name: ${WHATSAPP_TEMPLATE_YES_NAME}
-  template-no-name: ${WHATSAPP_TEMPLATE_NO_NAME}
-  template-thankyou-service-update-name: ${WHATSAPP_TEMPLATE_THANKYOU_SERVICE_UPDATE_NAME}
-
-
-
-  webhook:
-    verify-token: ${WEBHOOK_VERIFY_TOKEN}
-    app-secret: ${WHATSAPP_APP_SECRET}
