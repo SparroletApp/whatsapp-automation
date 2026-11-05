@@ -17,7 +17,7 @@ public class CorsConfig {
         CorsConfiguration configuration = new CorsConfiguration();
 
         configuration.setAllowedOrigins(
-                Arrays.asList("http://localhost:3000")
+                Arrays.asList("https://whatsapp-backend-h36s.onrender.com/")
         );
 
         configuration.setAllowedMethods(
