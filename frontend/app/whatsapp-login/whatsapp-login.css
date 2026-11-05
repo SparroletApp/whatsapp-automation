@@ -1,0 +1,156 @@
+.whatsapp-login {
+    min-height: 85vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 40px 20px;
+    background: #f7f9fc;
+}
+
+.whatsapp-login-card {
+    width: 100%;
+    max-width: 520px;
+    padding: 45px 40px;
+    background: #ffffff;
+    border: 1px solid #e9edf2;
+    border-radius: 20px;
+    text-align: center;
+    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.05);
+}
+
+.whatsapp-login-icon {
+    width: 75px;
+    height: 75px;
+    margin: 0 auto 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #e8f9ef;
+    color: #25d366;
+    border-radius: 22px;
+    font-size: 42px;
+}
+
+.whatsapp-login-label {
+    color: #25a65a;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+}
+
+.whatsapp-login-card h1 {
+    margin: 14px 0;
+    color: #18212f;
+    font-size: 29px;
+    font-weight: 750;
+}
+
+.whatsapp-login-description {
+    color: #737d8c;
+    font-size: 14px;
+    line-height: 1.8;
+    margin-bottom: 28px;
+}
+
+.whatsapp-login-user {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 15px;
+    margin-bottom: 25px;
+    text-align: left;
+    background: #f8fafc;
+    border: 1px solid #edf0f4;
+    border-radius: 12px;
+}
+
+.whatsapp-user-avatar {
+    width: 43px;
+    height: 43px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #e9eaff;
+    color: #5558d9;
+    border-radius: 50%;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.whatsapp-login-user strong,
+.whatsapp-login-user span {
+    display: block;
+}
+
+.whatsapp-login-user strong {
+    color: #202938;
+    font-size: 14px;
+}
+
+.whatsapp-login-user span {
+    margin-top: 4px;
+    color: #818b99;
+    font-size: 12px;
+}
+
+.facebook-login-btn {
+    width: 100%;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    border: none;
+    border-radius: 10px;
+    background: #1877f2;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.25s ease;
+}
+
+.facebook-login-btn:hover {
+    background: #1265d6;
+    transform: translateY(-2px);
+}
+
+.facebook-login-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.facebook-login-btn i {
+    font-size: 21px;
+}
+
+.whatsapp-login-message {
+    margin-top: 15px;
+    color: #d9534f;
+    font-size: 13px;
+}
+
+.whatsapp-login-security {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin-top: 25px;
+    color: #8993a1;
+    font-size: 12px;
+}
+
+.whatsapp-login-security i {
+    color: #25a65a;
+    font-size: 17px;
+}
+
+@media (max-width: 576px) {
+    .whatsapp-login-card {
+        padding: 35px 22px;
+    }
+
+    .whatsapp-login-card h1 {
+        font-size: 24px;
+    }
+}

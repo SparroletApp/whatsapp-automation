@@ -1,0 +1,20 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-user-table
+      author: amrutha
+      changes:
+        - sqlFile:
+            path: sql/create_user_table.sql
+            relativeToChangelogFile: true
+
+  - changeSet:
+      id: create_whatsapp_accounts_table
+      author: amrutha
+      changes:
+        - sqlFile:
+            path: sql/create_whatsapp_accounts_table.sql
+            relativeToChangelogFile: true
+
+
+
+
