@@ -29,6 +29,7 @@ export interface AuthResponse {
 }
 
 const userService = {
+
     register: async (
         data: CreateUserRequest
     ): Promise<AuthResponse> => {
@@ -38,10 +39,15 @@ const userService = {
             data
         );
 
-        if (response.data.token) {
+        if (typeof window !== "undefined") {
             sessionStorage.setItem(
                 "access_token",
                 response.data.token
+            );
+
+            sessionStorage.setItem(
+                "user",
+                JSON.stringify(response.data.user)
             );
         }
 
@@ -52,8 +58,10 @@ const userService = {
         data: LoginUserRequest
     ): Promise<AuthResponse> => {
 
+        // Clear previous session
         if (typeof window !== "undefined") {
             sessionStorage.removeItem("access_token");
+            sessionStorage.removeItem("user");
         }
 
         const response = await apiService.post<AuthResponse>(
@@ -61,20 +69,35 @@ const userService = {
             data
         );
 
-        if (typeof window !== "undefined" && response.data.token) {
+        if (typeof window !== "undefined") {
+
+            if (!response.data.token || !response.data.user) {
+                throw new Error("Invalid login response.");
+            }
+
+            // Save JWT token
             sessionStorage.setItem(
                 "access_token",
                 response.data.token
+            );
+
+            // Save logged-in user
+            sessionStorage.setItem(
+                "user",
+                JSON.stringify(response.data.user)
             );
         }
 
         return response.data;
     },
+
     logout: (): void => {
         if (typeof window !== "undefined") {
             sessionStorage.removeItem("access_token");
+            sessionStorage.removeItem("user");
         }
     },
+
     isLoggedIn: (): boolean => {
         if (typeof window === "undefined") {
             return false;

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -19,7 +20,7 @@ function Login() {
         e.preventDefault();
 
         if (!email.trim() || !password.trim()) {
-            Swal.fire({
+            await Swal.fire({
                 icon: "warning",
                 title: "Required Fields",
                 text: "Please enter your email and password.",
@@ -31,10 +32,26 @@ function Login() {
         try {
             setLoading(true);
 
+            // Remove previous login details before attempting login.
+            sessionStorage.removeItem("access_token");
+            sessionStorage.removeItem("user");
+
             const response = await userService.login({
                 email: email.trim(),
                 password,
             });
+
+            // Validate the login response.
+            if (!response?.token || !response?.user) {
+                throw new Error("Invalid login response from server.");
+            }
+
+            // Save authentication details.
+            sessionStorage.setItem("access_token", response.token);
+            sessionStorage.setItem(
+                "user",
+                JSON.stringify(response.user)
+            );
 
             await Swal.fire({
                 icon: "success",
@@ -48,11 +65,16 @@ function Login() {
             router.replace("/whatsapp-login");
 
         } catch (error: any) {
+            // Clear authentication data if login fails.
+            sessionStorage.removeItem("access_token");
+            sessionStorage.removeItem("user");
+
             Swal.fire({
                 icon: "error",
                 title: "Login Failed",
                 text:
                     error.response?.data?.message ||
+                    error.message ||
                     "Invalid email or password. Please try again.",
                 confirmButtonColor: "#421DDB",
             });
@@ -79,6 +101,7 @@ function Login() {
                     </div>
 
                     <div className="login-left-content">
+
                         <span className="login-tagline">
                             <i className="bi bi-stars"></i>
                             BUSINESS MESSAGING PLATFORM
@@ -102,15 +125,18 @@ function Login() {
                                 <i className="bi bi-check-circle-fill"></i>
                                 Easy WhatsApp integration
                             </div>
+
                             <div>
                                 <i className="bi bi-check-circle-fill"></i>
                                 Centralized conversations
                             </div>
+
                             <div>
                                 <i className="bi bi-check-circle-fill"></i>
                                 Secure account access
                             </div>
                         </div>
+
                     </div>
 
                     <div className="login-left-footer">
@@ -152,6 +178,7 @@ function Login() {
                                         onChange={(e) => setEmail(e.target.value)}
                                         autoComplete="email"
                                         required
+                                        disabled={loading}
                                     />
                                 </div>
                             </div>
@@ -170,15 +197,27 @@ function Login() {
                                         onChange={(e) => setPassword(e.target.value)}
                                         autoComplete="current-password"
                                         required
+                                        disabled={loading}
                                     />
 
                                     <button
                                         type="button"
                                         className="login-password-toggle"
                                         onClick={() => setShowPassword(!showPassword)}
-                                        aria-label={showPassword ? "Hide password" : "Show password"}
+                                        aria-label={
+                                            showPassword
+                                                ? "Hide password"
+                                                : "Show password"
+                                        }
+                                        disabled={loading}
                                     >
-                                        <i className={`bi ${showPassword ? "bi-eye-slash" : "bi-eye"}`}></i>
+                                        <i
+                                            className={`bi ${
+                                                showPassword
+                                                    ? "bi-eye-slash"
+                                                    : "bi-eye"
+                                            }`}
+                                        ></i>
                                     </button>
                                 </div>
                             </div>
